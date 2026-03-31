@@ -5,7 +5,7 @@ import sys
 from gsp import GSP
 from util import argmax_index
 
-class BBAgent:
+class Cp_cwbb:
     """Balanced bidding agent"""
     def __init__(self, id, value, budget):
         self.id = id
@@ -49,10 +49,11 @@ class BBAgent:
 
         returns a list of utilities per slot.
         """
-        # TODO: Fill this in
-        utilities = []   # Change this
+        prev_round = history.round(t-1)
+        clicks = prev_round.clicks
+        utilities = [clicks[slot] * (self.value - min_bid)
+                     for (slot, min_bid, _) in self.slot_info(t, history, reserve)]
 
-        
         return utilities
 
     def target_slot(self, t, history, reserve):
@@ -80,10 +81,21 @@ class BBAgent:
 
         prev_round = history.round(t-1)
         (slot, min_bid, max_bid) = self.target_slot(t, history, reserve)
+        clicks = prev_round.clicks
+        if slot == 0:
+        # Already targeting top slot — bid full value
+            bid = self.value
+        else:
+        # Balanced bidding equation:
+        # clicks[s*] * (value - min_bid) = clicks[s*-1] * (value - bid)
+        # Solve for bid:
+            util_at_target = clicks[slot] * (self.value - min_bid)
+            bid = self.value - util_at_target / clicks[slot - 1]
 
-        # TODO: Fill this in.
-        bid = 0  # change this
-        
+        # Clamp to valid range for the target slot
+        bid = min(bid, max_bid)
+        bid = max(bid, min_bid)
+
         return bid
 
     def __repr__(self):

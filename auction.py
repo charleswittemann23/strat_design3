@@ -21,8 +21,8 @@ from vcg import VCG
 from history import History
 from stats import Stats
 
-#from bbagent import BBAgent
-#from truthfulagent import TruthfulAgent
+from cp_cwbb import Cp_cwbb
+from truthful import Truthful
 
 from util import argmax_index, shuffled, mean, stddev
 
@@ -47,8 +47,8 @@ def sim(config):
     # TODO: Create agents here
     agents = init_agents(config)
     # Uncomment to print agents.
-    #for a in agents:
-    #    logging.info(a)
+    for a in agents:
+       logging.info(a)
 
     n = len(agents)
     by_id = dict((a.id, a) for a in agents)
