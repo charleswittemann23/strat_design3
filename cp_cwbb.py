@@ -51,8 +51,9 @@ class Cp_cwbb:
         """
         prev_round = history.round(t-1)
         clicks = prev_round.clicks
-        utilities = [max(0, clicks[slot] * (self.value - min_bid))
-                 for (slot, min_bid, _) in self.slot_info(t, history, reserve)]
+        utilities = [clicks[slot] * (self.value - min_bid)
+                 for (slot, min_bid, _) in self.slot_info(t, history, reserve)
+                 if min_bid < self.value]
 
         return utilities
 
@@ -64,8 +65,20 @@ class Cp_cwbb:
         the other-agent bid for that slot in the last round.  If slot_id = 0,
         max_bid is min_bid * 2
         """
-        i =  argmax_index(self.expected_utils(t, history, reserve))
+        utils = self.expected_utils(t, history, reserve)
         info = self.slot_info(t, history, reserve)
+        
+        # If no profitable slots, pick the one with highest (least negative) utility
+        if len(utils) == 0:
+            # Return slot with lowest min_bid instead
+            i = min(range(len(info)), key=lambda s: info[s][1])
+        else:
+            # Find which slot in info corresponds to the best utility
+            # utils only contains utilities for slots where min_bid < value
+            profitable_slots = [s for s in info if s[1] < self.value]
+            i = argmax_index(utils)
+            return profitable_slots[i]
+        
         return info[i]
 
     def bid(self, t, history, reserve):
@@ -80,12 +93,17 @@ class Cp_cwbb:
         # If s*_j is the top slot, bid the value v_j
 
         prev_round = history.round(t-1)
+        slot_info = self.slot_info(t, history, reserve)
+        
+        # Check if any slots are profitable (min_bid < value)
+        profitable = [s for s in slot_info if s[1] < self.value]
+        
+        if len(profitable) == 0:
+            # No profitable slots; bid conservatively below reserve to avoid winning
+            return self.value / 2
+
         (slot, min_bid, max_bid) = self.target_slot(t, history, reserve)
         clicks = prev_round.clicks
-        
-        # If minimum bid exceeds value, don't bid (avoid negative utility)
-        if min_bid > self.value:
-            return self.value / 2
         
         if slot == 0:
             # Already targeting top slot — bid full value
