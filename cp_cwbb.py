@@ -11,6 +11,7 @@ class Cp_cwbb:
         self.id = id
         self.value = value
         self.budget = budget
+        self.spent = 0  # Track cumulative spending
 
     def initial_bid(self, reserve):
         return self.value / 2
@@ -37,7 +38,6 @@ class Cp_cwbb:
             return (s, min, max)
             
         info = list(map(compute, list(range(len(clicks)))))
-#        sys.stdout.write("slot info: %s\n" % info)
         return info
 
 
@@ -51,8 +51,8 @@ class Cp_cwbb:
         """
         prev_round = history.round(t-1)
         clicks = prev_round.clicks
-        utilities = [clicks[slot] * (self.value - min_bid)
-                     for (slot, min_bid, _) in self.slot_info(t, history, reserve)]
+        utilities = [max(0, clicks[slot] * (self.value - min_bid))
+                 for (slot, min_bid, _) in self.slot_info(t, history, reserve)]
 
         return utilities
 
@@ -82,19 +82,36 @@ class Cp_cwbb:
         prev_round = history.round(t-1)
         (slot, min_bid, max_bid) = self.target_slot(t, history, reserve)
         clicks = prev_round.clicks
+        
+        # If minimum bid exceeds value, don't bid (avoid negative utility)
+        if min_bid > self.value:
+            return self.value / 2
+        
         if slot == 0:
-        # Already targeting top slot — bid full value
+            # Already targeting top slot — bid full value
             bid = self.value
         else:
-        # Balanced bidding equation:
-        # clicks[s*] * (value - min_bid) = clicks[s*-1] * (value - bid)
-        # Solve for bid:
+            # Balanced bidding equation:
+            # clicks[s*] * (value - min_bid) = clicks[s*-1] * (value - bid)
+            # Solve for bid:
             util_at_target = clicks[slot] * (self.value - min_bid)
-            bid = self.value - util_at_target / clicks[slot - 1]
+            
+            # Guard against division by zero
+            if clicks[slot - 1] > 0:
+                bid = self.value - util_at_target / clicks[slot - 1]
+            else:
+                bid = min_bid
 
         # Clamp to valid range for the target slot
         bid = min(bid, max_bid)
         bid = max(bid, min_bid)
+        
+        # Enforce budget constraint
+        remaining_budget = self.budget - self.spent
+        bid = min(bid, remaining_budget)
+        
+        # Track spending (assuming this bid wins and we pay min_bid)
+        self.spent += min_bid
 
         return bid
 
