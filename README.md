@@ -47,3 +47,6 @@ Agent 4 should bid **~89 cents** in round 1.
 | Move to slot 2 at bid `b' = 89` | 45 × (143 − 89) | **2430** ✓ |
 
 The near-equality confirms the indifference condition holds — the agent gains nothing by moving up to slot 2.
+
+## Competitive Agent
+Our budget-aware agent extends balanced bidding with two additional scaling factors. First, it adjusts bid aggressiveness based on click volume — bidding more in high-traffic rounds and conserving in low-traffic ones, since clicks vary from 20 to 80 per round. Second, it tracks its actual spend rate against an ideal uniform pacing schedule, becoming more aggressive when under-budget and pulling back when over-budget. This pacing strategy is designed to outlast competitors who exhaust their budgets early, allowing our agent to face weaker competition in later rounds. We expect it to perform competitively against pure balanced bidders, particularly in longer auctions where budget constraints become binding.
