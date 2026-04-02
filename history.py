@@ -24,9 +24,9 @@ class History:
             clicks[t], per_click_payments[t],
             slot_payments[t])
 
-        print('bids: {}'.format(bids))
+        #print('bids: {}'.format(bids))
         self.last_round = lambda : len(bids) - 1
-        print('no error')
+        #print('no error')
         self.n_agents = n_agents
         self.num_rounds = lambda : len(bids)
         ## How much the agents spend.

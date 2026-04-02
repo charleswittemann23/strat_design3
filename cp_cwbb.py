@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import sys
-
 from gsp import GSP
 from util import argmax_index
 
@@ -11,11 +10,24 @@ class Cp_cwbb:
         self.id = id
         self.value = value
         self.budget = budget
-        self.spent = 0  # Track cumulative spending
 
     def initial_bid(self, reserve):
         return self.value / 2
 
+    def get_spent(self, t, history):
+        """Compute actual total spending from historical auction results."""
+        spent = 0
+        for r in range(t - 1):
+            past_round = history.round(r)
+            occupants = past_round.occupants          # was wrongly called 'allocation'
+            per_click_payments = past_round.per_click_payments
+            clicks = past_round.clicks
+
+            for i, occupant in enumerate(occupants):
+                if occupant == self.id:
+                    spent += per_click_payments[i] * clicks[i]
+                    break
+        return spent
 
     def slot_info(self, t, history, reserve):
         """Compute the following for each slot, assuming that everyone else
@@ -29,17 +41,15 @@ class Cp_cwbb:
         """
         prev_round = history.round(t-1)
         other_bids = [a_id_b for a_id_b in prev_round.bids if a_id_b[0] != self.id]
-
         clicks = prev_round.clicks
+
         def compute(s):
             (min, max) = GSP.bid_range_for_slot(s, clicks, reserve, other_bids)
-            if max == None:
+            if max is None:
                 max = 2 * min
             return (s, min, max)
-            
-        info = list(map(compute, list(range(len(clicks)))))
-        return info
 
+        return list(map(compute, list(range(len(clicks)))))
 
     def expected_utils(self, t, history, reserve):
         """
@@ -47,38 +57,25 @@ class Cp_cwbb:
         slot, assuming that everyone else keeps their bids constant from
         the previous round.
 
-        returns a list of utilities per slot.
+        Returns a list of utilities, one per slot (same length as slot_info).
         """
         prev_round = history.round(t-1)
         clicks = prev_round.clicks
-        utilities = [clicks[slot] * (self.value - min_bid)
-                 for (slot, min_bid, _) in self.slot_info(t, history, reserve)
-                 if min_bid < self.value]
+        info = self.slot_info(t, history, reserve)
 
+        utilities = [clicks[slot] * (self.value - min_bid)
+                     for (slot, min_bid, _) in info]
         return utilities
 
     def target_slot(self, t, history, reserve):
         """Figure out the best slot to target, assuming that everyone else
         keeps their bids constant from the previous rounds.
 
-        Returns (slot_id, min_bid, max_bid), where min_bid is the bid needed to tie
-        the other-agent bid for that slot in the last round.  If slot_id = 0,
-        max_bid is min_bid * 2
+        Returns (slot_id, min_bid, max_bid).
         """
         utils = self.expected_utils(t, history, reserve)
         info = self.slot_info(t, history, reserve)
-        
-        # If no profitable slots, pick the one with highest (least negative) utility
-        if len(utils) == 0:
-            # Return slot with lowest min_bid instead
-            i = min(range(len(info)), key=lambda s: info[s][1])
-        else:
-            # Find which slot in info corresponds to the best utility
-            # utils only contains utilities for slots where min_bid < value
-            profitable_slots = [s for s in info if s[1] < self.value]
-            i = argmax_index(utils)
-            return profitable_slots[i]
-        
+        i = argmax_index(utils)
         return info[i]
 
     def bid(self, t, history, reserve):
@@ -89,52 +86,40 @@ class Cp_cwbb:
         # - chooses his bid b' for the next round so as to
         # satisfy the following equation:
         # clicks_{s*_j} (v_j - t_{s*_j}(j)) = clicks_{s*_j-1}(v_j - b')
-        # (p_x is the price/click in slot x)
         # If s*_j is the top slot, bid the value v_j
 
         prev_round = history.round(t-1)
-        slot_info = self.slot_info(t, history, reserve)
-        
-        # Check if any slots are profitable (min_bid < value)
-        profitable = [s for s in slot_info if s[1] < self.value]
-        
-        if len(profitable) == 0:
-            # No profitable slots; bid conservatively below reserve to avoid winning
-            return self.value / 2
+        clicks = prev_round.clicks
 
         (slot, min_bid, max_bid) = self.target_slot(t, history, reserve)
-        clicks = prev_round.clicks
-        
+
+        # Spec: if price at target >= value, not expecting to win profitably -> bid value
+        if min_bid >= self.value:
+            return self.value
+
         if slot == 0:
-            # Already targeting top slot — bid full value
+            # Going for the top slot: bid full value
             bid = self.value
         else:
             # Balanced bidding equation:
-            # clicks[s*] * (value - min_bid) = clicks[s*-1] * (value - bid)
-            # Solve for bid:
+            # clicks[slot] * (value - min_bid) = clicks[slot-1] * (value - bid)
+            # => bid = value - clicks[slot] * (value - min_bid) / clicks[slot-1]
             util_at_target = clicks[slot] * (self.value - min_bid)
-            
-            # Guard against division by zero
             if clicks[slot - 1] > 0:
                 bid = self.value - util_at_target / clicks[slot - 1]
             else:
                 bid = min_bid
 
-        # Clamp to valid range for the target slot
+        # Clamp bid to valid range for the target slot
         bid = min(bid, max_bid)
         bid = max(bid, min_bid)
-        
-        # Enforce budget constraint
-        remaining_budget = self.budget - self.spent
-        bid = min(bid, remaining_budget)
-        
-        # Track spending (assuming this bid wins and we pay min_bid)
-        self.spent += min_bid
 
-        return bid
+        # Budget enforcement: cap against actual remaining budget from history
+        remaining = self.budget - self.get_spent(t, history)
+        bid = min(bid, remaining)
+
+        return max(bid, 0)
 
     def __repr__(self):
         return "%s(id=%d, value=%d)" % (
             self.__class__.__name__, self.id, self.value)
-
-
